@@ -8,14 +8,15 @@ from dotenv import load_dotenv
 
 class ConfigurationManager:
     """
-    Centralized configuration management for the CP Chatbot system.
-    Handles environment variables, logging setup, and application settings.
+    Enhanced configuration management for Business Manager integration.
+    Supports both personal page and Business Manager authentication flows.
     """
     
     def __init__(self):
         self._load_environment()
         self._clear_proxy_settings()
         self._setup_logging()
+        self._detect_page_type()
         self._validate_configuration()
         
     def _load_environment(self):
@@ -28,10 +29,7 @@ class ConfigurationManager:
             self._env_loaded = False
     
     def _clear_proxy_settings(self):
-        """
-        Clear proxy environment variables that interfere with API calls.
-        This addresses the primary cause of Anthropic API failures.
-        """
+        """Clear proxy environment variables that interfere with API calls"""
         proxy_vars = [
             'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy',
             'NO_PROXY', 'no_proxy'
@@ -47,44 +45,81 @@ class ConfigurationManager:
             if os.path.exists(ca_bundle_path):
                 os.environ['REQUESTS_CA_BUNDLE'] = ca_bundle_path
     
+    def _detect_page_type(self):
+        """Detect whether we're using Business Manager or personal page setup"""
+        self.use_business_manager = self.get_bool('USE_BUSINESS_MANAGER', False)
+        
+        # Auto-detect based on available tokens
+        if not self.use_business_manager:
+            has_system_token = bool(self.get('SYSTEM_USER_TOKEN'))
+            has_business_id = bool(self.get('BUSINESS_ID'))
+            
+            if has_system_token and has_business_id:
+                self.use_business_manager = True
+                self.logger.info("Auto-detected Business Manager setup")
+    
     def _setup_logging(self):
         """Configure centralized logging for all application components"""
-        # Create logs directory if it doesn't exist
         log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
         os.makedirs(log_dir, exist_ok=True)
         
-        # Configure log formatter
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         
-        # File handler with rotation
         file_handler = RotatingFileHandler(
             os.path.join(log_dir, 'chatbot.log'),
-            maxBytes=5*1024*1024,  # 5MB
+            maxBytes=5*1024*1024,
             backupCount=3,
-            encoding='utf-8'  # Ensure UTF-8 encoding for file logs
+            encoding='utf-8'
         )
         file_handler.setFormatter(formatter)
         file_handler.setLevel(logging.INFO)
         
-        # Console handler for development with encoding handling
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
         console_handler.setLevel(logging.INFO)
         
-        # Configure root logger
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
         root_logger.addHandler(file_handler)
         root_logger.addHandler(console_handler)
         
-        # Create application-specific logger
         self.logger = logging.getLogger("CPChatbot")
         self.logger.info("Configuration manager initialized successfully")
     
     def _validate_configuration(self):
-        """Validate that all required configuration is present"""
+        """Validate configuration based on page type"""
+        if self.use_business_manager:
+            self._validate_business_manager_config()
+        else:
+            self._validate_personal_page_config()
+    
+    def _validate_business_manager_config(self):
+        """Validate Business Manager specific configuration"""
+        required_vars = {
+            'ANTHROPIC_API_KEY': 'Anthropic API key for Claude integration',
+            'SYSTEM_USER_TOKEN': 'Facebook Business Manager System User Token',
+            'BUSINESS_ID': 'Facebook Business Manager ID',
+            'PAGE_ID': 'Facebook Page ID managed by Business Manager',
+            'MESSENGER_VERIFY_TOKEN': 'Facebook webhook verification token',
+            'APP_SECRET': 'Facebook App Secret'
+        }
+        
+        missing_vars = []
+        for var, description in required_vars.items():
+            if not self.get(var):
+                missing_vars.append(f"{var} ({description})")
+        
+        if missing_vars:
+            error_msg = f"Missing required Business Manager variables: {', '.join(missing_vars)}"
+            self.logger.error(error_msg)
+            raise EnvironmentError(error_msg)
+        
+        self.logger.info("Business Manager configuration validated successfully")
+    
+    def _validate_personal_page_config(self):
+        """Validate personal page configuration"""
         required_vars = {
             'ANTHROPIC_API_KEY': 'Anthropic API key for Claude integration',
             'PAGE_ACCESS_TOKEN': 'Facebook Page Access Token',
@@ -98,11 +133,11 @@ class ConfigurationManager:
                 missing_vars.append(f"{var} ({description})")
         
         if missing_vars:
-            error_msg = f"Missing required environment variables: {', '.join(missing_vars)}"
+            error_msg = f"Missing required personal page variables: {', '.join(missing_vars)}"
             self.logger.error(error_msg)
             raise EnvironmentError(error_msg)
         
-        self.logger.info("All required configuration variables are present")
+        self.logger.info("Personal page configuration validated successfully")
     
     def get(self, key: str, default: Any = None) -> Any:
         """Get environment variable with optional default value"""
@@ -133,7 +168,9 @@ class ConfigurationManager:
     
     @property
     def facebook_page_token(self) -> str:
-        """Facebook Page Access Token"""
+        """Facebook Page Access Token (for personal pages) or generated from system user"""
+        if self.use_business_manager:
+            return self.get('GENERATED_PAGE_TOKEN', '')
         return self.get('PAGE_ACCESS_TOKEN')
     
     @property
@@ -145,6 +182,21 @@ class ConfigurationManager:
     def facebook_app_secret(self) -> str:
         """Facebook App Secret for webhook signature verification"""
         return self.get('APP_SECRET')
+    
+    @property
+    def system_user_token(self) -> str:
+        """Facebook Business Manager System User Token"""
+        return self.get('SYSTEM_USER_TOKEN')
+    
+    @property
+    def business_id(self) -> str:
+        """Facebook Business Manager ID"""
+        return self.get('BUSINESS_ID')
+    
+    @property
+    def page_id(self) -> str:
+        """Facebook Page ID"""
+        return self.get('PAGE_ID')
     
     @property
     def server_port(self) -> int:
@@ -175,6 +227,10 @@ class ConfigurationManager:
     def max_retries(self) -> int:
         """Maximum number of API call retries"""
         return self.get_int('MAX_RETRIES', 3)
+    
+    def set_generated_page_token(self, token: str):
+        """Set the generated page token for Business Manager"""
+        os.environ['GENERATED_PAGE_TOKEN'] = token
     
     def validate_claude_model_version(self, version: str) -> bool:
         """Validate Claude model version format"""
