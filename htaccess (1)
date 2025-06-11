@@ -1,0 +1,27 @@
+# CP Chatbot FastCGI Configuration
+
+# Enable URL rewriting
+RewriteEngine On
+
+# Set the FCGI handler
+AddHandler fcgid-script .fcgi
+
+# Prevent access to sensitive files
+<FilesMatch "\.py$|\.env$|\.json$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Block access to sensitive directories
+<FilesMatch "^(venv/|logs/|case_data/).*$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# Allow static files to be served directly
+RewriteRule ^static/(.*)$ static/$1 [L]
+
+# Route all other requests through the FCGI application
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ dispatch.fcgi/$1 [QSA,L]

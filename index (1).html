@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CP Chatbot System Status</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #3498db;
+        }
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .status-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .status-item:last-child {
+            border-bottom: none;
+        }
+        .status-indicator {
+            padding: 4px 12px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .status-online { background-color: #28a745; }
+        .status-offline { background-color: #dc3545; }
+        .status-warning { background-color: #ffc107; color: #212529; }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #f5c6cb;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .system-health {
+            text-align: center;
+            margin: 30px 0;
+        }
+        .health-indicator {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        .health-label {
+            font-size: 1.2em;
+            color: #2c3e50;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>CP Chatbot System Status</h1>
+            <p>Facebook Messenger Integration & Case Management System</p>
+        </div>
+
+        <div class="system-health" id="systemHealth">
+            <div class="loading">Checking system health...</div>
+        </div>
+
+        <div class="status-section">
+            <h3>System Status</h3>
+            <div id="systemStatus">
+                <div class="loading">Loading system status...</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Last updated: <span id="lastUpdated"></span></p>
+            <p>System status is automatically checked every 30 seconds</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize dashboard on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSystemStatus();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(function() {
+                loadSystemStatus();
+            }, 30000);
+        });
+
+        // Load system status from FastCGI endpoint
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                // Update system health indicator
+                const healthHtml = `
+                    <div class="health-indicator">${data.status === 'healthy' ? '✓' : '✗'}</div>
+                    <div class="health-label">System ${data.status === 'healthy' ? 'Online' : 'Offline'}</div>
+                `;
+                document.getElementById('systemHealth').innerHTML = healthHtml;
+                document.getElementById('systemHealth').style.color = data.status === 'healthy' ? '#28a745' : '#dc3545';
+                
+                // Update status details
+                let statusHtml = '';
+                
+                // System status
+                statusHtml += '<div class="status-item">';
+                statusHtml += '<span>Application Status</span>';
+                statusHtml += `<span class="status-indicator ${data.status === 'healthy' ? 'status-online' : 'status-offline'}">${data.status.toUpperCase()}</span>`;
+                statusHtml += '</div>';
+                
+                // Active conversations
+                statusHtml += '<div class="status-item">';
+                statusHtml += '<span>Active Conversations</span>';
+                statusHtml += `<span>${data.active_conversations || 0}</span>`;
+                statusHtml += '</div>';
+                
+                // Configuration status
+                if (data.configuration) {
+                    statusHtml += '<div class="status-item">';
+                    statusHtml += '<span>Anthropic API</span>';
+                    statusHtml += `<span class="status-indicator ${data.configuration.anthropic_configured ? 'status-online' : 'status-offline'}">${data.configuration.anthropic_configured ? 'CONFIGURED' : 'NOT CONFIGURED'}</span>`;
+                    statusHtml += '</div>';
+                    
+                    statusHtml += '<div class="status-item">';
+                    statusHtml += '<span>Facebook Integration</span>';
+                    statusHtml += `<span class="status-indicator ${data.configuration.facebook_configured ? 'status-online' : 'status-offline'}">${data.configuration.facebook_configured ? 'CONFIGURED' : 'NOT CONFIGURED'}</span>`;
+                    statusHtml += '</div>';
+                }
+                
+                document.getElementById('systemStatus').innerHTML = statusHtml;
+                
+                // Update last checked timestamp
+                const now = new Date();
+                document.getElementById('lastUpdated').textContent = now.toLocaleString();
+                
+            } catch (error) {
+                document.getElementById('systemStatus').innerHTML = 
+                    '<div class="error">Failed to load system status: ' + error.message + '</div>';
+                
+                document.getElementById('systemHealth').innerHTML = `
+                    <div class="health-indicator" style="color: #dc3545;">!</div>
+                    <div class="health-label" style="color: #dc3545;">System Status Unavailable</div>
+                `;
+                
+                document.getElementById('lastUpdated').textContent = new Date().toLocaleString() + ' (Error)';
+            }
+        }
+    </script>
+</body>
+</html>
