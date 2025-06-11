@@ -9,7 +9,7 @@ PAGE_ID=103957885951272
 # ==============================================
 # KEEP YOUR EXISTING SETTINGS
 # ==============================================
-ANTHROPIC_API_KEY=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
+ANTHROPIC_API_KEY=
 MODEL_VERSION=claude-3-5-sonnet-20241022
 MESSENGER_VERIFY_TOKEN=testchat
 APP_SECRET=a705e0d888553c17e57b7a85c95353cf
