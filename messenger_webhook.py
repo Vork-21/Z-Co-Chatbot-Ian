@@ -15,7 +15,7 @@ from flask import Flask, request, jsonify
 # Import the enhanced modular components
 from config_manager import config
 from business_manager_auth import BusinessManagerAuth
-# Note: conversation_manager needs to be created based on your existing logic
+from conversation_manager import ConversationManager  # ADD THIS IMPORT
 
 # Configure comprehensive logging
 logger = config.get_logger("MessengerWebhook")
@@ -42,7 +42,7 @@ class MessengerSession:
     
     def __init__(self, sender_id: str):
         self.sender_id = sender_id
-        # self.conversation_manager = ConversationManager()  # You'll need to create this
+        self.conversation_manager = ConversationManager()  # UNCOMMENT AND FIX THIS
         self.conversation_active = True
         self.last_activity = time.time()
         self.handled_by_agent = False
@@ -63,19 +63,52 @@ class MessengerSession:
             return
         
         try:
-            # TODO: Replace with your actual conversation manager logic
-            # response_data = self.conversation_manager.analyze_response(message_text)
-            
-            # Placeholder logic - replace with your actual implementation
-            response_data = {"message": f"Echo: {message_text}"}
+            # REPLACE THE PLACEHOLDER WITH ACTUAL CONVERSATION LOGIC
+            response_data = self.conversation_manager.analyze_response(message_text)
             
             # Handle various response types based on your existing logic
             if 'error' in response_data:
                 self._send_message(response_data['error'])
                 return
             
-            # For now, just echo the message
-            self._send_message(f"I received: {message_text}")
+            # Handle eligibility failures
+            if 'eligible' in response_data and not response_data['eligible']:
+                self._send_message(response_data['reason'])
+                self.conversation_active = False
+                return
+            
+            # Handle end of chat
+            if response_data.get('end_chat'):
+                if 'farewell_message' in response_data:
+                    self._send_message(response_data['farewell_message'])
+                self.conversation_active = False
+                return
+            
+            # Handle sympathy message for difficult delivery
+            if 'sympathy_message' in response_data:
+                self._send_message(response_data['sympathy_message'])
+            
+            # Handle back command
+            if response_data.get('back'):
+                next_question, _ = self.conversation_manager.get_next_question()
+                self._send_message("Going back to the previous question.")
+                self._send_message(next_question)
+                return
+            
+            # Handle help request
+            if 'help' in response_data:
+                self._send_message(response_data['help'])
+                return
+            
+            # Get next question and send it
+            next_question, is_reminder = self.conversation_manager.get_next_question()
+            
+            if next_question:
+                self._send_message(next_question)
+                
+                # If conversation is complete, transition to agent
+                if self.conversation_manager.current_phase == 'complete':
+                    self._transition_to_agent("Case intake completed")
             
         except Exception as e:
             logger.error(f"Error processing message: {e}")
@@ -172,9 +205,12 @@ class MessengerSession:
     
     def send_welcome_message(self) -> None:
         """Send initial welcome message to begin conversation"""
-        welcome_message = "Hello! I'm here to help you determine if you may have a valid cerebral palsy case. To get started, could you please tell me your child's current age?"
+        next_question, _ = self.conversation_manager.get_next_question()
+        welcome_message = f"Hello! I'm here to help you determine if you may have a valid cerebral palsy case. {next_question}"
         self._send_message(welcome_message)
         logger.info(f"Sent welcome message to {self.sender_id}")
+
+# [REST OF THE CODE REMAINS THE SAME - just include all the other functions as they were]
 
 def verify_facebook_signature(request_data: bytes, signature_header: str) -> bool:
     """Verify request signature from Facebook for security"""
